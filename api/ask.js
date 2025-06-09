@@ -1,17 +1,13 @@
 // api/ask.js
-const { GenerativeLanguageClient } = require("@google-ai/generativelanguage");
 const fs   = require("fs");
 const path = require("path");
 
-// load deck once
 const cards = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../cards.json"), "utf8")
+  fs.readFileSync(path.join(__dirname, "../cards.json"), "utf-8")
 );
-
-// init Gemini client
-const client = new GenerativeLanguageClient({
-  apiKey: process.env.GEMINI_API_KEY
-});
+const API_KEY     = process.env.GEMINI_API_KEY;
+const TEXT_MODEL  = "gemini-2.5-flash-preview-05-20";
+const IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation";
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -19,25 +15,21 @@ module.exports = async (req, res) => {
     return res.status(405).end("Method Not Allowed");
   }
 
-  // parse JSON body
+  // —— parse JSON body ——
   let body = "";
-  req.on("data", (chunk) => body += chunk);
-  await new Promise((r) => req.on("end", r));
+  for await (const chunk of req) body += chunk;
   let data;
-  try {
-    data = JSON.parse(body);
-  } catch {
-    return res.status(400).json({ error: "Invalid JSON" });
-  }
+  try { data = JSON.parse(body); }
+  catch { return res.status(400).json({ error: "Invalid JSON" }); }
 
-  const userQ = (data.question||"").trim();
+  const userQ = (data.question || "").trim();
   if (!userQ) return res.status(400).json({ error: "Empty question" });
 
-  // pick a random card
+  // —— pick a random card ——
   const keys = Object.keys(cards);
-  const card = cards[ keys[Math.floor(Math.random()*keys.length)] ];
+  const card = cards[keys[Math.floor(Math.random() * keys.length)]];
 
-  // build the text prompt
+  // —— build the prompt ——
   const prompt = `
 ${card.title}
 ${card.content}
@@ -49,33 +41,43 @@ Answer to question: ${userQ}
 `.trim();
 
   try {
-    // call Gemini text
-    const [textResp] = await client.generateText({
-      model: "gemini-2.5-flash-preview-05-20",
-      prompt
-    });
-    const raw = textResp.text || "";
+    // —— call Gemini text endpoint ——
+    const textResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta2/models/${TEXT_MODEL}:generateText?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: { text: prompt } }),
+      }
+    );
+    const textJson = await textResp.json();
+    const raw = textJson.candidates?.[0]?.output || "";
+
     let takeaway, answer;
     if (raw.includes("Answer to question:")) {
       [takeaway, answer] = raw
         .split("Answer to question:")
-        .map(s => s.replace(/^Takeaway:/, "").trim());
+        .map((s) => s.replace(/^Takeaway:/, "").trim());
     } else {
       takeaway = raw.trim();
-      answer   = raw.trim();
+      answer = raw.trim();
     }
 
-    // call Gemini image
-    const imgPrompt = `Create a visual representation of: ${answer}`;
-    const [imgResp] = await client.generateImage({
-      model: "gemini-2.0-flash-preview-image-generation",
-      prompt: imgPrompt
-    });
-    const image = imgResp?.image?.imageBytes || null; // base64
+    // —— call Gemini image endpoint ——
+    const imgResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta2/models/${IMAGE_MODEL}:generateImage?key=${API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: { text: answer } }),
+      }
+    );
+    const imgJson = await imgResp.json();
+    const image = imgJson.candidates?.[0]?.image?.imageBytes || null; // base64
 
-    return res.json({ card, takeaway, answer, image });
+    return res.status(200).json({ card, takeaway, answer, image });
   } catch (e) {
     console.error(e);
-    res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: e.message });
   }
 };
