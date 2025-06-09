@@ -30,27 +30,53 @@
   <div id="img-container"></div>
 
   <script>
+    // Correctly grab the button by id:
     document.getElementById("ask").onclick = async () => {
       const q = document.getElementById("q").value.trim();
       if (!q) return alert("Please type a question!");
 
       document.getElementById("loading").style.display = "block";
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ question: q })
-      });
-      document.getElementById("loading").style.display = "none";
 
-      if (!res.ok) {
-        let err = "Unknown error";
-        try { err = (await res.json()).error; } catch(e){ err = await res.text(); }
-        return alert("Error: " + err);
+      let res;
+      try {
+        // NOTE: use /api/ask, not /ask
+        res = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q })
+        });
+      } catch (err) {
+        document.getElementById("loading").style.display = "none";
+        return alert("Network error: " + err.message);
       }
 
-      const { card, takeaway, answer, image } = await res.json();
+      document.getElementById("loading").style.display = "none";
 
-      // render
+      // Read the raw text once:
+      const text = await res.text();
+
+      if (!res.ok) {
+        // Try to parse JSON out of the text, fallback to raw text:
+        let msg;
+        try {
+          msg = JSON.parse(text).error;
+        } catch {
+          msg = text;
+        }
+        return alert("Error: " + msg);
+      }
+
+      // Now that it's OK, parse JSON:
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch (e) {
+        return alert("Invalid JSON response");
+      }
+
+      const { card, takeaway, answer, image } = payload;
+
+      // Render the card + texts:
       document.getElementById("card-title").innerText   = card.title;
       document.getElementById("card-content").innerText = card.content;
       document.getElementById("card").style.display      = "block";
@@ -61,6 +87,7 @@
       document.getElementById("answer-title").style.display = "block";
       document.getElementById("answer").innerText          = answer;
 
+      // Render the image if we got one:
       const imgDiv = document.getElementById("img-container");
       imgDiv.innerHTML = "";
       if (image) {
