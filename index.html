@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>🎴 KoolBox JS</title>
+  <style>
+    body { font-family:sans-serif; max-width:600px; margin:2rem auto; }
+    textarea { width:100%; font-size:1rem; }
+    button { padding:.5em 1em; font-size:1rem; }
+    img { max-width:100%; margin-top:1em; }
+    #loading { display:none; }
+  </style>
+</head>
+<body>
+  <h1>🎴 KoolBox JS</h1>
+  <textarea id="q" rows="4"
+    placeholder="E.g. How can I improve my focus today?"></textarea>
+  <p><button id="ask">🗣️ Ask KoolBox</button></p>
+  <div id="loading">⏳ Thinking…</div>
+
+  <div id="card" style="display:none;">
+    <h2 id="card-title"></h2>
+    <p id="card-content"></p>
+  </div>
+  <hr/>
+  <h3 id="takeaway-title" style="display:none;">🎴 Takeaway</h3>
+  <p id="takeaway"></p>
+  <h3 id="answer-title" style="display:none;">💡 Answer</h3>
+  <p id="answer"></p>
+  <div id="img-container"></div>
+
+  <script>
+    document.getElementById("ask").onclick = async () => {
+      const q = document.getElementById("q").value.trim();
+      if (!q) return alert("Please type a question!");
+      document.getElementById("loading").style.display = "block";
+
+      // always post back to same origin
+      const url = `${location.origin}/ask`;
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q })
+        });
+      } catch (err) {
+        alert("Network error: " + err.message);
+        document.getElementById("loading").style.display = "none";
+        return;
+      }
+      document.getElementById("loading").style.display = "none";
+
+      if (!resp.ok) {
+        // try to parse JSON error, or show text
+        let errText;
+        try { errText = (await resp.json()).error; }
+        catch { errText = await resp.text(); }
+        return alert("Error: " + errText);
+      }
+
+      const { card, takeaway, answer, image } = await resp.json();
+
+      // render
+      document.getElementById("card-title").innerText = card.title;
+      document.getElementById("card-content").innerText = card.content;
+      document.getElementById("card").style.display = "block";
+
+      document.getElementById("takeaway-title").style.display = "block";
+      document.getElementById("takeaway").innerText = takeaway;
+
+      document.getElementById("answer-title").style.display = "block";
+      document.getElementById("answer").innerText = answer;
+
+      const imgDiv = document.getElementById("img-container");
+      imgDiv.innerHTML = "";
+      if (image) {
+        const img = new Image();
+        img.src = "data:image/png;base64," + image;
+        img.alt = "Visual representation";
+        imgDiv.appendChild(img);
+      }
+    };
+  </script>
+</body>
+</html>
