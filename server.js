@@ -1,11 +1,10 @@
 // server.js
 import express from "express";
 import cors from "cors";
-import bodyParser from "body-parser";
-import dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import fs from "fs";
-import path from "path";
-// Google GenAI node client
+import dotenv from "dotenv";
 import { GenerativeLanguageClient } from "@google-ai/generativelanguage";
 
 dotenv.config();
@@ -15,72 +14,70 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const client = new GenerativeLanguageClient({
-  apiKey: API_KEY,
-  // override the default endpoint if needed:
-  // apiEndpoint: "https://generativelanguage.googleapis.com",
-});
+// --- load deck via proper __dirname in ESM ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const cards = JSON.parse(
+  fs.readFileSync(join(__dirname, "cards.json"), "utf8")
+);
+
+// --- init Gemini client ---
+const client = new GenerativeLanguageClient({ apiKey: API_KEY });
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
-app.use(express.static("public"));
+app.use(express.json());
+// serve all files in public/ at /
+app.use(express.static(join(__dirname, "public")));
 
-// ─── The 52‐card deck ─────────────────────────────────────────────────────────
-const cards = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "cards.json"), "utf8")
-);
-
-// ─── POST /ask ────────────────────────────────────────────────────────────────
 app.post("/ask", async (req, res) => {
   try {
     const userQ = (req.body.question || "").trim();
     if (!userQ) return res.status(400).json({ error: "Empty question" });
 
-    // 1) pick a random card
+    // pick a random card
     const keys = Object.keys(cards);
     const cardKey = keys[Math.floor(Math.random() * keys.length)];
     const card = cards[cardKey];
 
-    // 2) build prompt
+    // build the prompt
     const prompt = `
 ${card.title}
 ${card.content}
 
-Provide a brief takeaway (1-2 sentences) summarizing the card’s theme, followed by "Answer to question:" and an answer to the question based on the card. Keep both concise and strip all markup styling.
-If the user asks in Chinese, reply in zh-hk. If the card is not directly related, please still make up an insight that suits.
+Provide a brief takeaway (1-2 sentences) summarizing the card’s theme, 
+followed by "Answer to question:" and an answer to the question based on the card. 
+Keep both concise, strip all markup. If the user asks in Chinese, reply in zh-hk. 
+If the card is not directly related, still make up an insight that suits.
 
 Takeaway:
 Answer to question: ${userQ}
-`;
+`.trim();
 
-    // 3) call Gemini text model
+    // call Gemini text
     const [textResp] = await client.generateText({
       model: "gemini-2.5-flash-preview-05-20",
       prompt,
     });
-    let raw = textResp.text || "";
-    let takeaway = "";
-    let answer = "";
+    const raw = textResp.text || "";
+    let takeaway, answer;
     if (raw.includes("Answer to question:")) {
       [takeaway, answer] = raw
         .split("Answer to question:")
         .map((s) => s.replace(/^Takeaway:/, "").trim());
     } else {
-      takeaway = "（无法解析模型输出）";
+      takeaway = raw.trim();
       answer = raw.trim();
     }
 
-    // 4) call Gemini image model
-    const imagePrompt = `Create a visual representation of the following concept: ${answer}`;
+    // call Gemini image
+    const imgPrompt = `Create a visual representation of: ${answer}`;
     const [imgResp] = await client.generateImage({
       model: "gemini-2.0-flash-preview-image-generation",
-      prompt: imagePrompt,
+      prompt: imgPrompt,
     });
-    // The node client may return base64 directly as `imgResp.image`:
-    const image = imgResp?.image?.imageBytes || null;
+    const image = imgResp?.image?.imageBytes || null; // base64
 
-    // 5) return JSON
     res.json({ card, takeaway, answer, image });
   } catch (e) {
     console.error(e);
@@ -88,8 +85,7 @@ Answer to question: ${userQ}
   }
 });
 
-// ─── Start server ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server listening on http://localhost:${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`🚀 Server running at http://localhost:${PORT}`)
+);
