@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>🎴 KoolBox JS</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>🎴 KoolBox JS on Vercel</title>
   <style>
     body { font-family:sans-serif; max-width:600px; margin:2rem auto; }
     textarea { width:100%; font-size:1rem; }
@@ -14,8 +14,7 @@
 </head>
 <body>
   <h1>🎴 KoolBox JS</h1>
-  <textarea id="q" rows="4"
-    placeholder="E.g. How can I improve my focus today?"></textarea>
+  <textarea id="q" rows="4" placeholder="How can I improve my focus today?"></textarea>
   <p><button id="ask">🗣️ Ask KoolBox</button></p>
   <div id="loading">⏳ Thinking…</div>
 
@@ -23,7 +22,7 @@
     <h2 id="card-title"></h2>
     <p id="card-content"></p>
   </div>
-  <hr/>
+  <hr>
   <h3 id="takeaway-title" style="display:none;">🎴 Takeaway</h3>
   <p id="takeaway"></p>
   <h3 id="answer-title" style="display:none;">💡 Answer</h3>
@@ -34,44 +33,33 @@
     document.getElementById("ask").onclick = async () => {
       const q = document.getElementById("q").value.trim();
       if (!q) return alert("Please type a question!");
-      document.getElementById("loading").style.display = "block";
 
-      // always post back to same origin
-      const url = `${location.origin}/ask`;
-      let resp;
-      try {
-        resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q })
-        });
-      } catch (err) {
-        alert("Network error: " + err.message);
-        document.getElementById("loading").style.display = "none";
-        return;
-      }
+      document.getElementById("loading").style.display = "block";
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ question: q })
+      });
       document.getElementById("loading").style.display = "none";
 
-      if (!resp.ok) {
-        // try to parse JSON error, or show text
-        let errText;
-        try { errText = (await resp.json()).error; }
-        catch { errText = await resp.text(); }
-        return alert("Error: " + errText);
+      if (!res.ok) {
+        let err = "Unknown error";
+        try { err = (await res.json()).error; } catch(e){ err = await res.text(); }
+        return alert("Error: " + err);
       }
 
-      const { card, takeaway, answer, image } = await resp.json();
+      const { card, takeaway, answer, image } = await res.json();
 
       // render
-      document.getElementById("card-title").innerText = card.title;
+      document.getElementById("card-title").innerText   = card.title;
       document.getElementById("card-content").innerText = card.content;
-      document.getElementById("card").style.display = "block";
+      document.getElementById("card").style.display      = "block";
 
       document.getElementById("takeaway-title").style.display = "block";
-      document.getElementById("takeaway").innerText = takeaway;
+      document.getElementById("takeaway").innerText          = takeaway;
 
       document.getElementById("answer-title").style.display = "block";
-      document.getElementById("answer").innerText = answer;
+      document.getElementById("answer").innerText          = answer;
 
       const imgDiv = document.getElementById("img-container");
       imgDiv.innerHTML = "";
