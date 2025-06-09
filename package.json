@@ -1,0 +1,7 @@
+{
+  "name": "koolbox-vercel",
+  "version": "1.0.0",
+  "dependencies": {
+    "@google-ai/generativelanguage": "^1.0.0"
+  }
+}
